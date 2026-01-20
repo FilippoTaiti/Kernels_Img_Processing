@@ -25,6 +25,7 @@ struct Image {
     bool writeImage(const char* filename) const;
 };
 
+Image grayscale(Image& image);
 
 
 

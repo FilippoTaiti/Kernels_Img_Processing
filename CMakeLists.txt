@@ -24,3 +24,4 @@ add_executable(untitled1
 set_target_properties(untitled1 PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON)
 
+target_link_libraries(untitled1 PRIVATE ${OpenCV_LIBS} cudart)

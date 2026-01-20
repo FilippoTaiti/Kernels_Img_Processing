@@ -1,24 +1,22 @@
 #include <iostream>
-#include <opencv2/opencv.hpp>
 #include <chrono>
 #include <cuda_runtime_api.h>
 #include <device_launch_parameters.h>
 
+// https://www.researchgate.net/figure/Discrete-approximation-of-the-Gaussian-kernels-3x3-5x5-7x7_fig2_325768087
+
+
 #define identity3 {0, 0, 0, 0, 1, 0, 0, 0, 0}
 #define identity5 {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 , 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-#define edge0 {1, 0, -1, 0, 0, 0, 1, 0, 1}
-#define edge1 {0, 1, 0, 1, -4, 1, 0, 1, 0}
-#define edge2 {{-1, -1, -1}, {-1, 8, -1}, {-1, -1, -1}}
+#define gaussian_blur3x3 {1, 2, 1, 2, 4, 2, 1, 2, 1}
+#define gaussian_blur5x5 {1, 4, 6, 4, 1, 4, 16, 24, 16, 4, 6, 24, 36, 24, 6, 4, 16, 24, 16, 4, 1, 4, 6, 4, 1}
+#define ridge {0, -1, 0, -1, 4, -1, 0, -1, 0}
+#define edge {-1, -1, -1, -1, 8, -1, -1, -1, -1}
 #define sharpen {0, -1, 0, -1, 5, -1, 0, -1, 0}
 #define box_blur {0.1111, 0.1111, 0.1111, 0.1111, 0.1111, 0.1111, 0.1111, 0.1111, 0.1111}
-#define gaussian_blur {1*0.0625, 2*0.0625, 1*0.0625, 2*0.0625, 4*0.0625, 2*0.0625, 1*0.0625, 2*0.0625, 1*0.0625}
-#define emboss {{-2, -1, 0}, {-1, 1, 1}, {0, 1, 2}}
-
-#define sobel3x3gx {-1, -2, -1, 0, 0, 0, 1, 2, 1}
-#define sobel3x3gy {{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}}
-
-#define sobel5x5gx {2, 2, 4, 2, 2, 1, 1, 2, 1, 1, 0, 0, 0, 0, 0, -1, -1, -2, -1, -1, -2, -2, -4, -2, -2}
-#define sobel5x5gy {{2, 1, 0, -1, -2}, {2, 1, 0, -1, -2}, {4, 2, 0, -2, -4}, {2, 1, 0, -1, -2}, {2, 1, 0, -1, -2}}
+#define gaussian3x3 {1, 2, 1, 2, 4, 2, 1, 2, 1}
+#define gaussian5x5 {1, 4, 7, 4, 1, 4, 16, 26, 16, 4, 7, 26, 41, 26, 7, 4, 16, 26, 16, 4, 1, 4, 7, 4, 1}
+#define gaussian7x7 {0, 0, 1, 2, 1, 0, 0, 0, 3, 13, 22, 13, 3, 0, 1, 13, 59, 97, 59, 13, 1, 2, 22, 97, 159, 97, 22, 2, 1, 13, 59, 97, 59, 13, 1, 0, 3, 13, 22, 13, 3, 0, 0, 0, 1, 2, 1, 0, 0}
 
 #define NUMBER_OF_CHANNELS 3
 
@@ -29,27 +27,64 @@ using namespace std;
 
 
 
+
+
+
 int main() {
-    Image test("dataset/n01693334_green_lizard.JPEG");
-    float kernel[9] = edge1;
+    Image image("dataset/n01693334_green_lizard.JPEG");
+    auto* output_data = new uint8_t[image.size];
+
+    double kernel3x3[9] = gaussian3x3;
+    double sum = 0.0f;
+    for (int k = 0; k < 15; k++) {
+        if (k > 4) {
+            auto start = chrono::high_resolution_clock::now();
+            applyKernel(image, 3, kernel3x3, output_data, 0.0625);
+            auto end = chrono::high_resolution_clock::now();
+            auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
+            sum += duration.count();
 
 
+        }
 
-    auto* output_data = new uint8_t[test.size];
-    applyKernel(test, 3, kernel, output_data);
-    Image result3_image(test.width, test.height, test.channels, output_data);
-    bool result = result3_image.writeImage("resultkernel33.png");
-
-    float kernel25[25] = identity5;
-/*
-    applyKernel(test, 5, kernel25, output_data);
-    Image result5_image(test.width, test.height, test.channels, output_data);
-    result = result5_image.writeImage("resultkernel5.png");
-
-*/
+    }
+    printf("Tempo di esecuzione kernel 3x3 (ms): %.2f\n", sum);
+    Image result3_image(image.width, image.height, image.channels, output_data);
+    bool result = result3_image.writeImage("result_gaussian_kernel_3X3.png");
 
 
+    double kernel5x5[25] = gaussian5x5;
+    sum = 0.0f;
+    for (int k = 0; k < 15; k++) {
+        if (k > 4) {
+            auto start = chrono::high_resolution_clock::now();
+            applyKernel(image, 5, kernel5x5, output_data, 0.0036630037);
+            auto end = chrono::high_resolution_clock::now();
+            auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
+            sum += duration.count();
+        }
 
+    }
+    printf("Tempo di esecuzione kernel 5x5 (ms): %.2f\n", sum);
+    Image result5_image(image.width, image.height, image.channels, output_data);
+    result = result5_image.writeImage("result_gaussian_kernel_5X5.png");
+
+
+    double kernel7x7[49] = gaussian7x7;
+    sum = 0.0f;
+    for (int k = 0; k < 15; k++) {
+        if (k > 4) {
+            auto start = chrono::high_resolution_clock::now();
+            applyKernel(image, 7, kernel7x7, output_data, 0.000997009);
+            auto end = chrono::high_resolution_clock::now();
+            auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
+            sum += duration.count();
+        }
+
+    }
+    printf("Tempo di esecuzione kernel 7x7 (ms): %.2f", sum);
+    Image result7_image(image.width, image.height, image.channels, output_data);
+    result = result7_image.writeImage("result_gaussian_kernel_7X7.png");
 
 
 

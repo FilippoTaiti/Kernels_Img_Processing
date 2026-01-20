@@ -9,9 +9,6 @@
 #include <opencv2/highgui.hpp>
 #include "utils.h"
 
-void applyKernel(const Image& input_image, int mask_width, const float* kernel, uint8_t* output_data);
-
-void RGBtoGrayScale(const Image& input_image, uint8_t* output_data);
-
+void applyKernel(const Image& input_image, int mask_width, const double* kernel, uint8_t* output_data, double normalizing_factor);
 
 #endif //UNTITLED1_CPU_H

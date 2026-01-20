@@ -19,10 +19,32 @@ Image::Image(const int width, const int height, const int channels, uint8_t* dat
 
 
 bool Image::readImage(const char *filename) {
-    data = stbi_load(filename, &width, &height, &channels, 3);
+    data = stbi_load(filename, &width, &height, &channels, 0);
     return data != nullptr;
 }
 
 bool Image::writeImage(const char *filename) const {
     return stbi_write_jpg(filename,width,height,channels,data,100) != 0;
+}
+
+Image grayscale(Image& image) {
+    if (image.channels == 1) {
+        return image;
+    }
+    auto *data = new uint8_t[image.width*image.height];
+
+
+    for (int y = 0; y < image.height; y++) {
+        for (int x = 0; x < image.width; x++) {
+            uint8_t r, g, b;
+            r = image.data[(y*image.width+x)*image.channels];
+            g = image.data[(y*image.width+x)*image.channels+1];
+            b = image.data[(y*image.width+x)*image.channels+2];
+
+            data[y*image.width+x] = 0.21f * r + 0.71f * g + 0.07f * b;
+        }
+    }
+    Image output(image.width, image.height, 1, data);
+    return output;
+
 }
