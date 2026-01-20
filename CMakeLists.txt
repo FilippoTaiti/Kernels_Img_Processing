@@ -18,6 +18,8 @@ add_executable(untitled1
         cpu.h
         utils.cpp
         utils.h
+        gpu.cuh
+        gpu.cu
 
 )
 

@@ -24,11 +24,7 @@ using namespace std;
 
 #include "cpu.h"
 #include "utils.h"
-
-
-
-
-
+#include "gpu.cuh"
 
 int main() {
     Image image("dataset/n01693334_green_lizard.JPEG");
@@ -48,7 +44,7 @@ int main() {
         }
 
     }
-    printf("Tempo di esecuzione kernel 3x3 (ms): %.2f\n", sum);
+    printf("Tempo di esecuzione CPU kernel 3x3 (ms): %.2f\n", sum);
     Image result3_image(image.width, image.height, image.channels, output_data);
     bool result = result3_image.writeImage("result_gaussian_kernel_3X3.png");
 
@@ -65,7 +61,7 @@ int main() {
         }
 
     }
-    printf("Tempo di esecuzione kernel 5x5 (ms): %.2f\n", sum);
+    printf("Tempo di esecuzione CPU kernel 5x5 (ms): %.2f\n", sum);
     Image result5_image(image.width, image.height, image.channels, output_data);
     result = result5_image.writeImage("result_gaussian_kernel_5X5.png");
 
@@ -82,10 +78,119 @@ int main() {
         }
 
     }
-    printf("Tempo di esecuzione kernel 7x7 (ms): %.2f", sum);
+    printf("Tempo di esecuzione CPU kernel 7x7 (ms): %.2f\n", sum);
     Image result7_image(image.width, image.height, image.channels, output_data);
     result = result7_image.writeImage("result_gaussian_kernel_7X7.png");
 
+
+
+
+    int mask_width = 3;
+    uint8_t* data_ptr;
+    double* kernel;
+    uint8_t* output_data_gpu;
+
+    cudaMalloc(&data_ptr, sizeof(uint8_t)*image.size);
+    cudaMalloc(&kernel, sizeof(double)*mask_width*mask_width);
+    cudaMalloc(&output_data_gpu, sizeof(uint8_t)*image.size);
+
+    cudaMemcpy(data_ptr, image.data, image.size, cudaMemcpyHostToDevice);
+    cudaMemcpy(kernel, kernel3x3, mask_width*mask_width*sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(output_data_gpu, output_data, image.size*sizeof(uint8_t), cudaMemcpyHostToDevice);
+
+    sum = 0.0f;
+    float ms = 0.0f;
+
+
+    cudaEvent_t start, end;
+    cudaEventCreate(&start);
+    cudaEventCreate(&end);
+
+    for (int k = 0; k < 15; k++) {
+        if (k > 4) {
+            cudaEventRecord(start);
+            gpu_kernel<<<32, 1024>>>(data_ptr, image.width, image.height, image.channels, mask_width, kernel, output_data_gpu, 0.0625);
+            cudaEventRecord(end);
+            cudaEventSynchronize(end);
+            cudaEventElapsedTime(&ms, start, end);
+            sum += ms;
+
+        }
+    }
+    printf("Tempo di esecuzione GPU kernel 3x3 (ms): %.2f\n", sum);
+
+    cudaMemcpy(output_data, output_data_gpu, image.size, cudaMemcpyDeviceToHost);
+    Image result3_image_gpu(image.width, image.height, image.channels, output_data);
+    result = result3_image_gpu.writeImage("result_gaussian_kernel_3X3_gpu.png");
+
+    cudaFree(output_data_gpu);
+    cudaFree(kernel);
+    cudaFree(data_ptr);
+
+    mask_width = 5;
+    cudaMalloc(&data_ptr, sizeof(uint8_t)*image.size);
+    cudaMalloc(&kernel, sizeof(double)*mask_width*mask_width);
+    cudaMalloc(&output_data_gpu, sizeof(uint8_t)*image.size);
+
+    cudaMemcpy(data_ptr, image.data, image.size, cudaMemcpyHostToDevice);
+    cudaMemcpy(kernel, kernel3x3, mask_width*mask_width*sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(output_data_gpu, output_data, image.size*sizeof(uint8_t), cudaMemcpyHostToDevice);
+
+    sum = 0.0f;
+    ms = 0.0f;
+    for (int k = 0; k < 15; k++) {
+        if (k > 4) {
+            cudaEventRecord(start);
+            gpu_kernel<<<32, 1024>>>(data_ptr, image.width, image.height, image.channels, mask_width, kernel, output_data_gpu, 0.0036630037);
+            cudaEventRecord(end);
+            cudaEventSynchronize(end);
+            cudaEventElapsedTime(&ms, start, end);
+            sum += ms;
+
+        }
+    }
+    printf("Tempo di esecuzione GPU kernel 5x5 (ms): %.2f\n", sum);
+
+    cudaMemcpy(output_data, output_data_gpu, image.size, cudaMemcpyDeviceToHost);
+    Image result5_image_gpu(image.width, image.height, image.channels, output_data);
+    result = result5_image_gpu.writeImage("result_gaussian_kernel_5X5_gpu.png");
+
+    cudaFree(output_data_gpu);
+    cudaFree(kernel);
+    cudaFree(data_ptr);
+
+    mask_width = 7;
+    mask_width = 5;
+    cudaMalloc(&data_ptr, sizeof(uint8_t)*image.size);
+    cudaMalloc(&kernel, sizeof(double)*mask_width*mask_width);
+    cudaMalloc(&output_data_gpu, sizeof(uint8_t)*image.size);
+
+    cudaMemcpy(data_ptr, image.data, image.size, cudaMemcpyHostToDevice);
+    cudaMemcpy(kernel, kernel3x3, mask_width*mask_width*sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(output_data_gpu, output_data, image.size*sizeof(uint8_t), cudaMemcpyHostToDevice);
+
+    sum = 0.0f;
+    ms = 0.0f;
+    for (int k = 0; k < 15; k++) {
+        if (k > 4) {
+            cudaEventRecord(start);
+            gpu_kernel<<<32, 1024>>>(data_ptr, image.width, image.height, image.channels, mask_width, kernel, output_data_gpu, 0.000997009);
+            cudaEventRecord(end);
+            cudaEventSynchronize(end);
+            cudaEventElapsedTime(&ms, start, end);
+            sum += ms;
+
+        }
+    }
+    printf("Tempo di esecuzione GPU kernel 7x7 (ms): %.2f", sum);
+
+    cudaMemcpy(output_data, output_data_gpu, image.size, cudaMemcpyDeviceToHost);
+    Image result7_image_gpu(image.width, image.height, image.channels, output_data);
+    result = result7_image_gpu.writeImage("result_gaussian_kernel_7X7_gpu.png");
+
+    cudaFree(output_data_gpu);
+    cudaFree(kernel);
+    cudaFree(data_ptr);
 
 
     return 0;

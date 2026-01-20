@@ -11,16 +11,16 @@ void applyKernel(const Image &input_image, int mask_width, const double* kernel,
                 int actual_row = x - mask_width / 2;
                 int actual_column = y - mask_width / 2;
 
-                double rgb = 0;
+                double rgb = 0.0f;
 
-                for (int k_row = 0; k_row < mask_width; k_row++) {
-                    for (int k_col = 0; k_col < mask_width; k_col++) {
+                for (int k_col = 0; k_col < mask_width; k_col++) {
+                    for (int k_row = 0; k_row < mask_width; k_row++) {
 
                         int cur_row = actual_row + k_row;
                         int cur_column = actual_column + k_col;
                         if (cur_row >= 0 && cur_row < input_image.width && cur_column >= 0 && cur_column < input_image.height) {
                             rgb += input_image.data[cur_column*input_image.width*input_image.channels + cur_row*input_image.channels + c] * kernel
-                               [k_row * mask_width + k_col];
+                               [k_col * mask_width + k_row];
                         }
 
 
