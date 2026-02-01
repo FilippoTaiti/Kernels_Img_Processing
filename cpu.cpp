@@ -4,31 +4,56 @@
 
 #include "cpu.h"
 
-void applyKernel(const Image &input_image, int mask_width, const double* kernel, uint8_t* output_data, double normalizing_factor) {
-    for (int y = 0; y < input_image.height; y++) {
-        for (int x = 0; x < input_image.width; x++) {
+void applyKernelPlanar(const Image &input_image, int mask_width, const double *kernel, uint8_t *output_data,
+                       double normalizing_factor) {
+    for (int x = 0; x < input_image.width; x++) {
+        for (int y = 0; y < input_image.height; y++) {
             for (int c = 0; c < input_image.channels; c++) {
-                int actual_row = x - mask_width / 2;
-                int actual_column = y - mask_width / 2;
+                const int actual_row = y - mask_width / 2;
+                const int actual_column = x - mask_width / 2;
 
                 double rgb = 0.0f;
 
                 for (int k_col = 0; k_col < mask_width; k_col++) {
                     for (int k_row = 0; k_row < mask_width; k_row++) {
-
                         int cur_row = actual_row + k_row;
                         int cur_column = actual_column + k_col;
-                        if (cur_row >= 0 && cur_row < input_image.width && cur_column >= 0 && cur_column < input_image.height) {
-                            rgb += input_image.data[cur_column*input_image.width*input_image.channels + cur_row*input_image.channels + c] * kernel
-                               [k_col * mask_width + k_row];
+                        if (cur_row >= 0 && cur_row < input_image.height && cur_column >= 0 && cur_column <
+                            input_image.width) {
+                            rgb += input_image.data[
+                                        (c * input_image.width * input_image.height) + cur_row * input_image.
+                                        width + cur_column] * kernel
+                                    [k_col * mask_width + k_row];
                         }
-
-
                     }
-                    output_data[y*input_image.width*input_image.channels + x*input_image.channels + c] = clamp(rgb*normalizing_factor, 0.0, 255.0);
+                    output_data[(c * input_image.width * input_image.height) + y * input_image.width + x] = clamp(
+                        rgb * normalizing_factor, 0.0, 255.0);
                 }
-
             }
         }
     }
+}
+
+void test_cpu(const Image &input_image, const int mask_width, const double* kernel, uint8_t* output_data,
+              const double normalizing_factor, vector<double>& cpu_times) {
+    for (int k = 0; k <= NUMBER_OF_ITERATIONS; k++) {
+        if (k > 2) {
+            auto start = chrono::high_resolution_clock::now();
+            applyKernelPlanar(input_image, mask_width, kernel, output_data, normalizing_factor);
+            auto end = chrono::high_resolution_clock::now();
+            auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
+
+            cpu_times[k - 3] = duration.count();
+        } else {
+            applyKernelPlanar(input_image, mask_width, kernel, output_data, normalizing_factor);
+        }
+    }
+
+
+    printf("Tempi di esecuzione CPU kernel %dx%d (ms):\n", mask_width, mask_width);
+    printf("Min: %.4f\n", *min_element(cpu_times.begin(), cpu_times.end()));
+    printf("Max: %.4f\n", *max_element(cpu_times.begin(), cpu_times.end()));
+    const double avg = mean(cpu_times);
+    printf("Avg: %.4f\n", avg);
+    printf("Std: %.4f\n", standard_dev(cpu_times, avg));
 }

@@ -9,6 +9,13 @@
 #include <opencv2/highgui.hpp>
 #include "utils.h"
 
-void applyKernel(const Image& input_image, int mask_width, const double* kernel, uint8_t* output_data, double normalizing_factor);
+
+void applyKernelPlanar(const Image& input_image, int mask_width, const double* kernel, uint8_t* output_data,
+                       double normalizing_factor);
+
+
+void test_cpu(const Image& input_image, int mask_width, const double* kernel, uint8_t *output_data,
+              const double normalizing_factor, vector<double>& cpu_times);
+
 
 #endif //UNTITLED1_CPU_H

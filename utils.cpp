@@ -48,3 +48,44 @@ Image grayscale(Image& image) {
     return output;
 
 }
+
+double mean(const vector<double> &vector) {
+    double sum = 0.0f;
+    for (double element : vector) {
+        sum += element;
+    }
+    return sum / static_cast<double>(vector.size());
+}
+
+double standard_dev(const vector<double> &vector, const double mean) {
+    double sum = 0.0f;
+    for (double element : vector) {
+        sum += (element - mean) * (element - mean);
+    }
+
+    return sqrt(sum / static_cast<double>(vector.size()));
+}
+
+uint8_t* toPlanar(const Image &image) {
+    uint8_t* data = new uint8_t[image.width*image.height*image.channels];
+    for (int channel = 0; channel < image.channels; channel++) {
+        for (int col = 0; col < image.width; col++) {
+            for (int row = 0; row < image.height; row++) {
+                data[(channel*image.width*image.height) + row*image.width + col] = image.data[(row*image.width + col)*image.channels + channel];
+            }
+        }
+    }
+    return data;
+}
+
+uint8_t* toInterleaved(const Image &image) {
+    uint8_t* data = new uint8_t[image.width*image.height*image.channels];
+    for (int channel = 0; channel < image.channels; channel++) {
+        for (int col = 0; col < image.width; col++) {
+            for (int row = 0; row < image.height; row++) {
+                data[(row*image.width + col)*image.channels + channel] = image.data[(channel*image.width*image.height) + row*image.width + col];
+            }
+        }
+    }
+    return data;
+}
