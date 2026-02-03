@@ -1,21 +1,30 @@
 #include <cstdint>
 #include <vector>
-#define MAXMASKWIDTH 7
-__constant__ inline double kernel[MAXMASKWIDTH*MAXMASKWIDTH];
+#define MAX_MASK_WIDTH 11
+__constant__ inline float kernel[MAX_MASK_WIDTH*MAX_MASK_WIDTH];
 
 #include "utils.h"
 using namespace std;
+#include <string>
 #define TILE_WIDTH 16
 
-__global__ void gpu_kernel(const uint8_t* input_data, int width, int height, int channels, int mask_width, uint8_t* output_data, double normalizing_factor);
-__global__ void gpu_kernel_with_tiling(const uint8_t* input_data, int width, int height, int channels, int mask_width, uint8_t* output_data, double normalizing_factor);
+__global__ void gpu_kernel(const uint8_t* input_data, int width, int height, int channels, int mask_width, uint8_t* output_data);
+__global__ void gpu_kernel_with_tiling(const uint8_t* input_data, int width, int height, int channels, int mask_width, uint8_t* output_data);
 
 
 
 #ifdef __cplusplus
 extern "C" {
     #endif
-    void test_gpu(const Image& image, int mask_width, vector<double>& gpu_times, bool tiling, double normalizing_factor, uint8_t* output_data_gpu);
+    void test_gpu(const Image& image, int mask_width, vector<float>& gpu_times, bool tiling, uint8_t* output_data_gpu);
     #ifdef __cplusplus
+}
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+    void test_wrapper(const Image& image, vector<float>& cpu_times, vector<float>& gpu_times, uint8_t* output_data_cpu, uint8_t* output_data_gpu, string name);
+#ifdef __cplusplus
 }
 #endif

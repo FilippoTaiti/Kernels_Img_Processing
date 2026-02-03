@@ -3,96 +3,111 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "cpu.h"
 #include "utils.h"
 
 __global__ void gpu_kernel(const uint8_t *input_data, const int width, const int height, const int channels,
-                           const int mask_width, uint8_t *output_data, const double normalizing_factor) {
+                           const int mask_width, uint8_t *output_data) {
     const int col = blockIdx.x * blockDim.x + threadIdx.x;
     const int row = blockIdx.y * blockDim.y + threadIdx.y;
-    const int channel = blockIdx.z * blockDim.z + threadIdx.z;
-    if (col < width && row < height && channel < channels) {
+
+    if (col < width && row < height) {
         const int actual_column = col - mask_width / 2;
         const int actual_row = row - mask_width / 2;
 
-        double rgb = 0.0f;
+
+        float rgb = 0.0f;
 
         for (int k_row = 0; k_row < mask_width; k_row++) {
             for (int k_col = 0; k_col < mask_width; k_col++) {
                 const int real_col = actual_column + k_col;
                 const int real_row = actual_row + k_row;
-                const int idx = (channel * width * height) + real_row * width + real_col;
                 const int k_idx = k_row * mask_width + k_col;
                 bool ipred = real_row >= 0 && real_row < height && real_col >= 0 && real_col < width;
                 if (ipred) {
-                    rgb += input_data[idx] * kernel[k_idx];
+                    rgb += input_data[real_row * width + real_col] * kernel[k_idx];
                 }
             }
         }
-        rgb *= normalizing_factor;
-        const int out_idx = (channel * width * height) + row * width + col;
-        output_data[out_idx] = static_cast<uint8_t>(fminf(fmaxf(rgb, 0.0f), 255.0f));
+        const int out_idx = row * width + col;
+        output_data[out_idx] = static_cast<uint8_t>(min(max(rgb, 0.0f), 255.0f));
     }
 }
 
 __global__ void gpu_kernel_with_tiling(const uint8_t *input_data, const int width, const int height, const int channels,
-                                       const int mask_width, uint8_t *output_data,
-                                       const double normalizing_factor) {
+                                       const int mask_width, uint8_t *output_data) {
     extern __shared__ uint8_t tile_p[];
-    const int o_tile_width = TILE_WIDTH - (mask_width - 1);
     const int mask_radius = mask_width / 2;
     const int dim = TILE_WIDTH + mask_width - 1;
 
-    const int output_row = blockIdx.y * o_tile_width + threadIdx.y;
-    const int output_col = blockIdx.x * o_tile_width + threadIdx.x;
+    const int dest = threadIdx.y * TILE_WIDTH + threadIdx.x;
+    const int all_pixels = dim * dim;
 
-    const int input_row = output_row - mask_radius;
-    const int input_col = output_col - mask_radius;
+    for (int i = dest; i < all_pixels; i += TILE_WIDTH * TILE_WIDTH) {
+        const int destY = i / dim;
+        const int destX = i % dim;
 
-    for (int k = 0; k < channels; k++) {
-        if (input_row >= 0 && input_row < height && input_col >= 0 && input_col < width) {
-            tile_p[k * dim * dim + threadIdx.y * dim + threadIdx.x] = input_data[
-                k * width * height + input_row * width + input_col];
+        const int srcY = blockIdx.y * TILE_WIDTH + destY - mask_radius;
+        const int srcX = blockIdx.x * TILE_WIDTH + destX - mask_radius;
+
+        const int src = srcY * width + srcX;
+        if (srcY >= 0 && srcY < height && srcX >= 0 && srcX < width) {
+            tile_p[destY * dim + destX] = input_data[src];
         } else {
-            tile_p[k * dim * dim + threadIdx.y * dim + threadIdx.x] = 0.0;
+            tile_p[destY * dim + destX] = 0;
         }
-        __syncthreads();
+    }
 
-        if (threadIdx.y < o_tile_width && threadIdx.x < o_tile_width) {
-            double rgb = 0.0;
-            for (int k_row = 0; k_row < mask_width; k_row++) {
-                for (int k_col = 0; k_col < mask_width; k_col++) {
-                    const int new_row = k_row + threadIdx.y;
-                    const int new_col = k_col + threadIdx.x;
-                    const int kernel_index = k_row * mask_width + k_col;
-                    rgb += tile_p[k * dim * dim + new_row * dim + new_col] * kernel[kernel_index];
-                }
-            }
-            if (output_row < height && output_col < width) {
-                output_data[k * width * height + output_row * width + output_col] = static_cast<uint8_t>(fminf(fmaxf(rgb*normalizing_factor, 0.0f), 255.0f));
+    __syncthreads();
+
+    const int output_row = threadIdx.y + blockIdx.y * TILE_WIDTH;
+    int output_col = threadIdx.x + blockIdx.x * TILE_WIDTH;
+    if (output_row < height && output_col < width) {
+        float rgb = 0.0f;
+        for (int k_row = 0; k_row < mask_width; k_row++) {
+            for (int k_col = 0; k_col < mask_width; k_col++) {
+                int new_row = threadIdx.y + k_row;
+                int new_col = threadIdx.x + k_col;
+                rgb += tile_p[new_row * dim + new_col] * kernel[k_row * mask_width + k_col];
             }
         }
+        output_data[output_row * width + output_col] = static_cast<uint8_t>(min(max(rgb, 0.0f), 255.0f));
     }
 }
 
-void test_gpu(const Image &image, int mask_width, vector<double> &gpu_times, const bool tiling,
-              const double normalizing_factor,
+void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times, const bool tiling,
               uint8_t *output_data_gpu) {
-    int total_bytes = (TILE_WIDTH + mask_width - 1) * (TILE_WIDTH + mask_width - 1) * image.channels * sizeof(uint8_t);
-    const int o_tile_width = TILE_WIDTH - (mask_width - 1);
-    const int dim = TILE_WIDTH + mask_width - 1;
+    int total_bytes[image.channels];
+    int dim = TILE_WIDTH + mask_width - 1;
+    for (int ch = 0; ch < image.channels; ch++) {
+        total_bytes[ch] = dim * dim * sizeof(uint8_t);
+    }
 
-    uint8_t *data_ptr;
-    uint8_t *output_data;
+
+    uint8_t *device_input;
+    uint8_t *host_input;
+    uint8_t *device_output;
+    uint8_t *host_output;
 
 
-    cudaError_t err = cudaMalloc(&data_ptr, sizeof(uint8_t) * image.size);
+    cudaError_t err = cudaMallocHost(&host_input, sizeof(uint8_t) * image.size);
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
-    err = cudaMalloc(&output_data, sizeof(uint8_t) * image.size);
+    memcpy(host_input, image.data, image.size * sizeof(uint8_t));
+
+    err = cudaMallocHost(&host_output, sizeof(uint8_t) * image.size);
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
 
-    err = cudaMemcpy(data_ptr, image.data, image.size * sizeof(u_int8_t), cudaMemcpyHostToDevice);
+    err = cudaMalloc(&device_input, sizeof(uint8_t) * image.size);
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
 
+    err = cudaMalloc(&device_output, sizeof(uint8_t) * image.size);
+    if (err != cudaSuccess) printf(cudaGetErrorString(err));
+
+
+    cudaStream_t streams[3];
+    cudaStreamCreate(&streams[0]);
+    cudaStreamCreate(&streams[1]);
+    cudaStreamCreate(&streams[2]);
 
     float ms = 0.0f;
 
@@ -101,47 +116,103 @@ void test_gpu(const Image &image, int mask_width, vector<double> &gpu_times, con
     cudaEventCreate(&end);
 
     if (tiling) {
-        dim3 dimBlock(dim, dim);
-        dim3 dimGrid((image.width + o_tile_width - 1)/ o_tile_width,
-                     (image.height + o_tile_width - 1) / o_tile_width, 1);
+        dim3 dimBlock(TILE_WIDTH, TILE_WIDTH);
+        dim3 dimGrid((image.width - 1) / TILE_WIDTH + 1,
+                     (image.height - 1) / TILE_WIDTH + 1, 1);
         for (int k = 0; k <= NUMBER_OF_ITERATIONS; k++) {
             if (k > 2) {
                 cudaEventRecord(start);
-                gpu_kernel_with_tiling<<<dimGrid, dimBlock, total_bytes>>>(
-                    data_ptr, image.width, image.height, image.channels,
-                    mask_width, output_data, normalizing_factor);
+                for (int ch = 0; ch < image.channels; ch++) {
+                    const int index = ch * image.width * image.height;
 
-
+                    err = cudaMemcpyAsync(device_input + index, host_input + index,
+                                          sizeof(uint8_t) * image.width * image.height,
+                                          cudaMemcpyHostToDevice, streams[ch]);
+                    if (err != cudaSuccess) printf("H2D: ", cudaGetErrorString(err));
+                    gpu_kernel_with_tiling<<<dimGrid, dimBlock, total_bytes[ch], streams[ch]>>>(
+                        device_input + index, image.width, image.height, image.channels,
+                        mask_width, device_output + index);
+                    err = cudaMemcpyAsync(host_output + index, device_output + index,
+                                          sizeof(uint8_t) * image.width * image.height,
+                                          cudaMemcpyDeviceToHost, streams[ch]);
+                    if (err != cudaSuccess) printf("D2H: ", cudaGetErrorString(err));
+                }
+                for (int ch = 0; ch < image.channels; ch++) {
+                    cudaStreamSynchronize(streams[ch]);
+                }
                 cudaEventRecord(end);
                 cudaEventSynchronize(end);
                 cudaEventElapsedTime(&ms, start, end);
                 gpu_times[k - 3] = ms;
             } else {
-                gpu_kernel_with_tiling<<<dimGrid, dimBlock, total_bytes>>>(
-                    data_ptr, image.width, image.height, image.channels,
-                    mask_width, output_data, normalizing_factor);
+                for (int ch = 0; ch < image.channels; ch++) {
+                    const int index = ch * image.width * image.height;
 
+                    err = cudaMemcpyAsync(device_input + index, host_input + index,
+                                          sizeof(uint8_t) * image.width * image.height,
+                                          cudaMemcpyHostToDevice, streams[ch]);
+                    if (err != cudaSuccess) printf("H2D: ", cudaGetErrorString(err));
+                    gpu_kernel_with_tiling<<<dimGrid, dimBlock, total_bytes[ch], streams[ch]>>>(
+                        device_input + index, image.width, image.height, image.channels,
+                        mask_width, device_output + index);
+                    err = cudaMemcpyAsync(host_output + index, device_output + index,
+                                          sizeof(uint8_t) * image.width * image.height,
+                                          cudaMemcpyDeviceToHost, streams[ch]);
+                    if (err != cudaSuccess) printf("D2H: ", cudaGetErrorString(err));
+                }
+                for (int ch = 0; ch < image.channels; ch++) {
+                    cudaStreamSynchronize(streams[ch]);
+                }
             }
         }
     } else {
-        dim3 dimBlock(16, 16, 3);
-        dim3 dimGrid(ceil((image.width + dimBlock.x - 1) / dimBlock.x),
-                     ceil((image.height + dimBlock.y - 1) / dimBlock.y),
-                     ceil((image.channels + dimBlock.z - 1) / dimBlock.z));
+        dim3 dimBlock(16, 16);
+        dim3 dimGrid((image.width + dimBlock.x - 1) / dimBlock.x,
+                     (image.height + dimBlock.y - 1) / dimBlock.y);
         for (int k = 0; k <= NUMBER_OF_ITERATIONS; k++) {
             if (k > 2) {
                 cudaEventRecord(start);
-                gpu_kernel<<<dimGrid, dimBlock>>>(data_ptr, image.width, image.height, image.channels,
-                                                  mask_width, output_data, normalizing_factor);
+                for (int ch = 0; ch < image.channels; ch++) {
+                    const int index = ch * image.width * image.height;
+                    err = cudaMemcpyAsync(device_input + index, host_input + index,
+                                          sizeof(uint8_t) * image.width * image.height,
+                                          cudaMemcpyHostToDevice, streams[ch]);
+                    if (err != cudaSuccess) printf("H2D: ", cudaGetErrorString(err));
+                    gpu_kernel<<<dimGrid, dimBlock, 0, streams[ch]>>>(
+                        device_input + index, image.width, image.height, image.channels,
+                        mask_width, device_output + index);
+                    err = cudaMemcpyAsync(host_output + index, device_output + index,
+                                          sizeof(uint8_t) * image.width * image.height,
+                                          cudaMemcpyDeviceToHost, streams[ch]);
+                    if (err != cudaSuccess) printf("D2H: ", cudaGetErrorString(err));
+                }
+
+                for (int ch = 0; ch < image.channels; ch++) {
+                    cudaStreamSynchronize(streams[ch]);
+                }
 
                 cudaEventRecord(end);
                 cudaEventSynchronize(end);
                 cudaEventElapsedTime(&ms, start, end);
                 gpu_times[k - 3] = ms;
             } else {
-                gpu_kernel<<<dimGrid, dimBlock>>>(data_ptr, image.width, image.height, image.channels,
-                                                  mask_width, output_data, normalizing_factor);
+                for (int ch = 0; ch < image.channels; ch++) {
+                    const int index = ch * image.width * image.height;
 
+                    err = cudaMemcpyAsync(device_input + index, host_input + index,
+                                          sizeof(uint8_t) * image.width * image.height,
+                                          cudaMemcpyHostToDevice, streams[ch]);
+                    gpu_kernel<<<dimGrid, dimBlock, 0, streams[ch]>>>(
+                        device_input + index, image.width, image.height, image.channels,
+                        mask_width, device_output + index);
+                    err = cudaMemcpyAsync(host_output + index, device_output + index,
+                                          sizeof(uint8_t) * image.width * image.height,
+                                          cudaMemcpyDeviceToHost, streams[ch]);
+                    if (err != cudaSuccess) printf("D2H: ", cudaGetErrorString(err));
+                }
+                for (int ch = 0; ch < image.channels; ch++) {
+                    cudaStreamSynchronize(streams[ch]);
+                }
             }
         }
     }
@@ -149,14 +220,93 @@ void test_gpu(const Image &image, int mask_width, vector<double> &gpu_times, con
     printf("Tempo di esecuzione GPU kernel %dx%d (ms): \n", mask_width, mask_width);
     printf("Min: %.4f\n", *min_element(gpu_times.begin(), gpu_times.end()));
     printf("Max: %.4f\n", *max_element(gpu_times.begin(), gpu_times.end()));
-    const double avg = mean(gpu_times);
+    const float avg = mean(gpu_times);
     printf("Avg: %.4f\n", avg);
     printf("Std: %.4f\n", standard_dev(gpu_times, avg));
 
-    err = cudaMemcpy(output_data_gpu, output_data, image.size * sizeof(u_int8_t), cudaMemcpyDeviceToHost);
+    for (int ch = 0; ch < image.channels; ch++) {
+        cudaStreamDestroy(streams[ch]);
+    }
+
+    memcpy(output_data_gpu, host_output, image.size * sizeof(uint8_t));
+
+    cudaFreeHost(host_input);
+    cudaFreeHost(host_output);
+    cudaFree(device_input);
+    cudaFree(device_output);
+}
+
+void test_wrapper(const Image &image, vector<float> &cpu_times, vector<float> &gpu_times, uint8_t* output_data_cpu, uint8_t *output_data_gpu, string name) {
+
+    cudaError_t err;
+    string filename;
+
+    float kernel7x7[49];
+    generateGaussianKernel(7, 1.4, kernel7x7);
+    float kernel11x11[121];
+    generateGaussianKernel(11, 2, kernel11x11);
+    float kernel23x23[529];
+    generateGaussianKernel(23, 3.8, kernel23x23);
+
+    printf("CPU...\n");
+
+
+    int mask_width = 7;
+    test_cpu(image, mask_width, kernel7x7, output_data_cpu, cpu_times);
+    Image result7_image_cpu_small(image.width, image.height, image.channels, output_data_cpu);
+    result7_image_cpu_small.data = toInterleaved(result7_image_cpu_small);
+    filename = "result_gaussian_kernel_7X7_cpu_" + name + ".png";
+    bool result = result7_image_cpu_small.writeImage(filename.c_str());
+
+    mask_width = 11;
+    test_cpu(image, mask_width, kernel11x11, output_data_cpu, cpu_times);
+    Image result11_image_cpu_small(image.width, image.height, image.channels, output_data_cpu);
+    result11_image_cpu_small.data = toInterleaved(result11_image_cpu_small);
+    filename = "result_gaussian_kernel_11X11_cpu_" + name + ".png";
+    result = result11_image_cpu_small.writeImage(filename.c_str());
+
+
+    printf("\nGPU with tiling...\n");
+
+
+    mask_width = 7;
+    err = cudaMemcpyToSymbol(kernel, kernel7x7, mask_width * mask_width * sizeof(float));
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
+    test_gpu(image, mask_width, gpu_times, true, output_data_gpu);
+    Image result7_gpu_image_tiling_small(image.width, image.height, image.channels, output_data_gpu);
+    result7_gpu_image_tiling_small.data = toInterleaved(result7_gpu_image_tiling_small);
+    filename = "result_gaussian_kernel_7X7_gpu_tiling_" + name + ".png";
+    result = result7_gpu_image_tiling_small.writeImage(filename.c_str());
+
+    mask_width = 11;
+    err = cudaMemcpyToSymbol(kernel, kernel11x11, mask_width * mask_width * sizeof(float));
+    if (err != cudaSuccess) printf(cudaGetErrorString(err));
+    test_gpu(image, mask_width, gpu_times, true, output_data_gpu);
+    Image result11_gpu_image_tiling_small(image.width, image.height, image.channels, output_data_gpu);
+    result11_gpu_image_tiling_small.data = toInterleaved(result11_gpu_image_tiling_small);
+    filename = "result_gaussian_kernel_11X11_gpu_tiling_" + name + ".png";
+    result = result11_gpu_image_tiling_small.writeImage(filename.c_str());
 
 
-    cudaFree(data_ptr);
-    cudaFree(output_data);
+    printf("\nGPU without tiling...\n");
+
+    mask_width = 7;
+
+    err = cudaMemcpyToSymbol(kernel, kernel7x7, mask_width * mask_width * sizeof(float));
+    if (err != cudaSuccess) printf(cudaGetErrorString(err));
+    test_gpu(image, mask_width, gpu_times, false, output_data_gpu);
+    Image result7_gpu_image_small(image.width, image.height, image.channels, output_data_gpu);
+    result7_gpu_image_small.data = toInterleaved(result7_gpu_image_small);
+    filename = "result_gaussian_kernel_7X7_gpu_" + name + ".png";
+    result = result7_gpu_image_small.writeImage(filename.c_str());
+
+    mask_width = 11;
+    err = cudaMemcpyToSymbol(kernel, kernel11x11, mask_width * mask_width * sizeof(float));
+    if (err != cudaSuccess) printf(cudaGetErrorString(err));
+    test_gpu(image, mask_width, gpu_times, false, output_data_gpu);
+    Image result11_gpu_image_small(image.width, image.height, image.channels, output_data_gpu);
+    result11_gpu_image_small.data = toInterleaved(result11_gpu_image_small);
+    filename = "result_gaussian_kernel_11X11_gpu_" + name + ".png";
+    result = result11_gpu_image_small.writeImage(filename.c_str());
+
 }

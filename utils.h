@@ -30,11 +30,14 @@ struct Image {
 
 Image grayscale(Image& image);
 
-double mean(const vector<double> &vector);
-double standard_dev(const vector<double> &vector, const double mean);
+float mean(const vector<float>& vector);
+float standard_dev(const vector<float>& vector, const float mean);
 
-uint8_t* toPlanar(const Image &image);
-uint8_t* toInterleaved(const Image &image);
+uint8_t* toPlanar(const Image& image);
+uint8_t* toInterleaved(const Image& image);
+
+void generateGaussianKernel(int size, float sigma, float* kernel);
+
 
 
 
