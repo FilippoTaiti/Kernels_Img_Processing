@@ -24,7 +24,7 @@ extern "C" {
 #ifdef __cplusplus
 extern "C" {
 #endif
-    void test_wrapper(const Image& image, vector<float>& cpu_times, vector<float>& gpu_times, uint8_t* output_data_cpu, uint8_t* output_data_gpu, string name);
+    void test_wrapper(const Image& image, vector<float>& cpu_times, vector<float>& gpu_times, string name, float* kernel3x3, float* kernel7x7, float* kernel11x11);
 #ifdef __cplusplus
 }
 #endif

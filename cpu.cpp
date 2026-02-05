@@ -35,12 +35,16 @@ void applyKernelPlanar(const Image &input_image, int mask_width, const float *ke
 void test_cpu(const Image &input_image, const int mask_width, const float* kernel, uint8_t* output_data, vector<float>& cpu_times) {
     for (int k = 0; k <= NUMBER_OF_ITERATIONS; k++) {
         if (k > 2) {
+            clock_t start1 = clock();
             auto start = chrono::high_resolution_clock::now();
             applyKernelPlanar(input_image, mask_width, kernel, output_data);
             auto end = chrono::high_resolution_clock::now();
+            clock_t end1 = clock();
             auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
+            double duration_cpu_time = ((double) (end1-start1)) / CLOCKS_PER_SEC;
 
             cpu_times[k - 3] = duration.count();
+
         } else {
             applyKernelPlanar(input_image, mask_width, kernel, output_data);
         }

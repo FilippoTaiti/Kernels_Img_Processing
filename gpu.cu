@@ -77,11 +77,8 @@ __global__ void gpu_kernel_with_tiling(const uint8_t *input_data, const int widt
 
 void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times, const bool tiling,
               uint8_t *output_data_gpu) {
-    int total_bytes[image.channels];
     int dim = TILE_WIDTH + mask_width - 1;
-    for (int ch = 0; ch < image.channels; ch++) {
-        total_bytes[ch] = dim * dim * sizeof(uint8_t);
-    }
+    int total_bytes = dim * dim * sizeof(uint8_t);
 
 
     uint8_t *device_input;
@@ -129,7 +126,7 @@ void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times
                                           sizeof(uint8_t) * image.width * image.height,
                                           cudaMemcpyHostToDevice, streams[ch]);
                     if (err != cudaSuccess) printf("H2D: ", cudaGetErrorString(err));
-                    gpu_kernel_with_tiling<<<dimGrid, dimBlock, total_bytes[ch], streams[ch]>>>(
+                    gpu_kernel_with_tiling<<<dimGrid, dimBlock, total_bytes, streams[ch]>>>(
                         device_input + index, image.width, image.height, image.channels,
                         mask_width, device_output + index);
                     err = cudaMemcpyAsync(host_output + index, device_output + index,
@@ -152,7 +149,7 @@ void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times
                                           sizeof(uint8_t) * image.width * image.height,
                                           cudaMemcpyHostToDevice, streams[ch]);
                     if (err != cudaSuccess) printf("H2D: ", cudaGetErrorString(err));
-                    gpu_kernel_with_tiling<<<dimGrid, dimBlock, total_bytes[ch], streams[ch]>>>(
+                    gpu_kernel_with_tiling<<<dimGrid, dimBlock, total_bytes, streams[ch]>>>(
                         device_input + index, image.width, image.height, image.channels,
                         mask_width, device_output + index);
                     err = cudaMemcpyAsync(host_output + index, device_output + index,
@@ -236,77 +233,98 @@ void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times
     cudaFree(device_output);
 }
 
-void test_wrapper(const Image &image, vector<float> &cpu_times, vector<float> &gpu_times, uint8_t* output_data_cpu, uint8_t *output_data_gpu, string name) {
+void test_wrapper(const Image &image, vector<float> &cpu_times, vector<float> &gpu_times, string name, float* kernel3x3, float* kernel7x7, float* kernel11x11) {
 
     cudaError_t err;
     string filename;
 
-    float kernel7x7[49];
-    generateGaussianKernel(7, 1.4, kernel7x7);
-    float kernel11x11[121];
-    generateGaussianKernel(11, 2, kernel11x11);
-    float kernel23x23[529];
-    generateGaussianKernel(23, 3.8, kernel23x23);
+    auto* output_data_cpu = new uint8_t[image.size];
+    auto* output_data_gpu = new uint8_t[image.size];
 
     printf("CPU...\n");
 
+    int mask_width = 3;
+    test_cpu(image, mask_width, kernel3x3, output_data_cpu, cpu_times);
+    Image result3_image_cpu(image.width, image.height, image.channels, output_data_cpu);
+    result3_image_cpu.data = toInterleaved(result3_image_cpu);
+    filename = "result_gaussian_kernel_3X3_cpu_" + name + ".png";
+    bool result = result3_image_cpu.writeImage(filename.c_str());
 
-    int mask_width = 7;
+
+    mask_width = 7;
     test_cpu(image, mask_width, kernel7x7, output_data_cpu, cpu_times);
-    Image result7_image_cpu_small(image.width, image.height, image.channels, output_data_cpu);
-    result7_image_cpu_small.data = toInterleaved(result7_image_cpu_small);
+    Image result7_image_cpu(image.width, image.height, image.channels, output_data_cpu);
+    result7_image_cpu.data = toInterleaved(result7_image_cpu);
     filename = "result_gaussian_kernel_7X7_cpu_" + name + ".png";
-    bool result = result7_image_cpu_small.writeImage(filename.c_str());
+    result = result7_image_cpu.writeImage(filename.c_str());
 
     mask_width = 11;
     test_cpu(image, mask_width, kernel11x11, output_data_cpu, cpu_times);
-    Image result11_image_cpu_small(image.width, image.height, image.channels, output_data_cpu);
-    result11_image_cpu_small.data = toInterleaved(result11_image_cpu_small);
+    Image result11_image_cpu(image.width, image.height, image.channels, output_data_cpu);
+    result11_image_cpu.data = toInterleaved(result11_image_cpu);
     filename = "result_gaussian_kernel_11X11_cpu_" + name + ".png";
-    result = result11_image_cpu_small.writeImage(filename.c_str());
+    result = result11_image_cpu.writeImage(filename.c_str());
 
 
     printf("\nGPU with tiling...\n");
 
+    mask_width = 3;
+    err = cudaMemcpyToSymbol(kernel, kernel3x3, mask_width * mask_width * sizeof(float));
+    if (err != cudaSuccess) printf(cudaGetErrorString(err));
+    test_gpu(image, mask_width, gpu_times, true, output_data_gpu);
+    Image result3_gpu_image_tiling(image.width, image.height, image.channels, output_data_gpu);
+    result3_gpu_image_tiling.data = toInterleaved(result3_gpu_image_tiling);
+    filename = "result_gaussian_kernel_3X3_gpu_tiling_" + name + ".png";
+    result = result3_gpu_image_tiling.writeImage(filename.c_str());
+
 
     mask_width = 7;
     err = cudaMemcpyToSymbol(kernel, kernel7x7, mask_width * mask_width * sizeof(float));
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
     test_gpu(image, mask_width, gpu_times, true, output_data_gpu);
-    Image result7_gpu_image_tiling_small(image.width, image.height, image.channels, output_data_gpu);
-    result7_gpu_image_tiling_small.data = toInterleaved(result7_gpu_image_tiling_small);
+    Image result7_gpu_image_tiling(image.width, image.height, image.channels, output_data_gpu);
+    result7_gpu_image_tiling.data = toInterleaved(result7_gpu_image_tiling);
     filename = "result_gaussian_kernel_7X7_gpu_tiling_" + name + ".png";
-    result = result7_gpu_image_tiling_small.writeImage(filename.c_str());
+    result = result7_gpu_image_tiling.writeImage(filename.c_str());
 
     mask_width = 11;
     err = cudaMemcpyToSymbol(kernel, kernel11x11, mask_width * mask_width * sizeof(float));
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
     test_gpu(image, mask_width, gpu_times, true, output_data_gpu);
-    Image result11_gpu_image_tiling_small(image.width, image.height, image.channels, output_data_gpu);
-    result11_gpu_image_tiling_small.data = toInterleaved(result11_gpu_image_tiling_small);
+    Image result11_gpu_image_tiling(image.width, image.height, image.channels, output_data_gpu);
+    result11_gpu_image_tiling.data = toInterleaved(result11_gpu_image_tiling);
     filename = "result_gaussian_kernel_11X11_gpu_tiling_" + name + ".png";
-    result = result11_gpu_image_tiling_small.writeImage(filename.c_str());
+    result = result11_gpu_image_tiling.writeImage(filename.c_str());
 
 
     printf("\nGPU without tiling...\n");
 
+    mask_width = 3;
+    err = cudaMemcpyToSymbol(kernel, kernel3x3, mask_width * mask_width * sizeof(float));
+    if (err != cudaSuccess) printf(cudaGetErrorString(err));
+    test_gpu(image, mask_width, gpu_times, true, output_data_gpu);
+    Image result3_gpu_image(image.width, image.height, image.channels, output_data_gpu);
+    result3_gpu_image.data = toInterleaved(result3_gpu_image);
+    filename = "result_gaussian_kernel_3X3_gpu_" + name + ".png";
+    result = result3_gpu_image.writeImage(filename.c_str());
+
     mask_width = 7;
 
     err = cudaMemcpyToSymbol(kernel, kernel7x7, mask_width * mask_width * sizeof(float));
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
     test_gpu(image, mask_width, gpu_times, false, output_data_gpu);
-    Image result7_gpu_image_small(image.width, image.height, image.channels, output_data_gpu);
-    result7_gpu_image_small.data = toInterleaved(result7_gpu_image_small);
+    Image result7_gpu_image(image.width, image.height, image.channels, output_data_gpu);
+    result7_gpu_image.data = toInterleaved(result7_gpu_image);
     filename = "result_gaussian_kernel_7X7_gpu_" + name + ".png";
-    result = result7_gpu_image_small.writeImage(filename.c_str());
+    result = result7_gpu_image.writeImage(filename.c_str());
 
     mask_width = 11;
     err = cudaMemcpyToSymbol(kernel, kernel11x11, mask_width * mask_width * sizeof(float));
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
     test_gpu(image, mask_width, gpu_times, false, output_data_gpu);
-    Image result11_gpu_image_small(image.width, image.height, image.channels, output_data_gpu);
-    result11_gpu_image_small.data = toInterleaved(result11_gpu_image_small);
+    Image result11_gpu_image(image.width, image.height, image.channels, output_data_gpu);
+    result11_gpu_image.data = toInterleaved(result11_gpu_image);
     filename = "result_gaussian_kernel_11X11_gpu_" + name + ".png";
-    result = result11_gpu_image_small.writeImage(filename.c_str());
+    result = result11_gpu_image.writeImage(filename.c_str());
 
 }

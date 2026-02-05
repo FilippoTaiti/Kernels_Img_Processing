@@ -8,6 +8,7 @@
 #include <opencv2/core/mat.hpp>
 #include <opencv2/highgui.hpp>
 #include "utils.h"
+#include <time.h>
 
 
 void applyKernelPlanar(const Image& input_image, int mask_width, const float* kernel, uint8_t* output_data);
