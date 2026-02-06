@@ -3,7 +3,7 @@
 #define MAX_MASK_WIDTH 11
 __constant__ inline float kernel[MAX_MASK_WIDTH*MAX_MASK_WIDTH];
 
-#include "utils.h"
+#include "Utility/utils.h"
 using namespace std;
 #include <string>
 #define TILE_WIDTH 16

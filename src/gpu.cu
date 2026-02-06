@@ -4,7 +4,7 @@
 #include <cstdio>
 
 #include "cpu.h"
-#include "utils.h"
+#include "Utility/utils.h"
 
 __global__ void gpu_kernel(const uint8_t *input_data, const int width, const int height, const int channels,
                            const int mask_width, uint8_t *output_data) {
@@ -238,14 +238,13 @@ void test_wrapper(const Image &image, vector<float> &cpu_times, vector<float> &g
     cudaError_t err;
     string filename;
 
-    printf("Width: %d, Height: %d", image.width, image.height);
 
     auto* output_data_cpu = new uint8_t[image.size];
     auto* output_data_gpu = new uint8_t[image.size];
     int mask_width;
     bool result;
 
-    /*printf("CPU...\n");
+    printf("CPU...\n");
 
     mask_width = 3;
     test_cpu(image, mask_width, kernel3x3, output_data_cpu, cpu_times);
@@ -267,7 +266,7 @@ void test_wrapper(const Image &image, vector<float> &cpu_times, vector<float> &g
     Image result11_image_cpu(image.width, image.height, image.channels, output_data_cpu);
     result11_image_cpu.data = toInterleaved(result11_image_cpu);
     filename = "result_gaussian_kernel_11X11_cpu_" + name + ".png";
-    result = result11_image_cpu.writeImage(filename.c_str());*/
+    result = result11_image_cpu.writeImage(filename.c_str());
 
 
     printf("\nGPU with tiling...\n");

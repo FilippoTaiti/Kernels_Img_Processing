@@ -13,13 +13,13 @@ find_package(OpenCV REQUIRED)
 
 
 add_executable(untitled1
-        main.cu
-        cpu.cpp
-        cpu.h
-        utils.cpp
-        utils.h
-        gpu.cuh
-        gpu.cu
+        src/main.cu
+        "src/cpu.cpp"
+        "src/cpu.h"
+        src/Utility/utils.cpp
+        src/Utility/utils.h
+        "src/gpu.cuh"
+        "src/gpu.cu"
 
 )
 

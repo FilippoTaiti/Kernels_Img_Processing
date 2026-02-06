@@ -4,8 +4,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "utils.h"
-#include "stb_image.h"
-#include "stb_image_write.h"
+#include "../../library/stb_image.h"
+#include "../../library/stb_image_write.h"
 
 Image::Image(const char *filename) {
     if (readImage(filename)) {

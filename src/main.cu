@@ -1,6 +1,6 @@
 #include <iostream>
 #include "cpu.h"
-#include "utils.h"
+#include "Utility/utils.h"
 #include "gpu.cuh"
 
 using namespace std;
