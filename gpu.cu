@@ -77,7 +77,7 @@ __global__ void gpu_kernel_with_tiling(const uint8_t *input_data, const int widt
 
 void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times, const bool tiling,
               uint8_t *output_data_gpu) {
-    int dim = TILE_WIDTH + mask_width - 1;
+    const int dim = TILE_WIDTH + mask_width - 1;
     int total_bytes = dim * dim * sizeof(uint8_t);
 
 
@@ -116,8 +116,8 @@ void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times
         dim3 dimBlock(TILE_WIDTH, TILE_WIDTH);
         dim3 dimGrid((image.width - 1) / TILE_WIDTH + 1,
                      (image.height - 1) / TILE_WIDTH + 1, 1);
-        for (int k = 0; k <= NUMBER_OF_ITERATIONS; k++) {
-            if (k > 2) {
+        for (int k = 0; k < NUMBER_OF_ITERATIONS; k++) {
+            if (k > 1) {
                 cudaEventRecord(start);
                 for (int ch = 0; ch < image.channels; ch++) {
                     const int index = ch * image.width * image.height;
@@ -140,7 +140,7 @@ void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times
                 cudaEventRecord(end);
                 cudaEventSynchronize(end);
                 cudaEventElapsedTime(&ms, start, end);
-                gpu_times[k - 3] = ms;
+                gpu_times[k - 2] = ms;
             } else {
                 for (int ch = 0; ch < image.channels; ch++) {
                     const int index = ch * image.width * image.height;
@@ -163,11 +163,11 @@ void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times
             }
         }
     } else {
-        dim3 dimBlock(16, 16);
+        dim3 dimBlock(32, 32);
         dim3 dimGrid((image.width + dimBlock.x - 1) / dimBlock.x,
                      (image.height + dimBlock.y - 1) / dimBlock.y);
-        for (int k = 0; k <= NUMBER_OF_ITERATIONS; k++) {
-            if (k > 2) {
+        for (int k = 0; k < NUMBER_OF_ITERATIONS; k++) {
+            if (k > 1) {
                 cudaEventRecord(start);
                 for (int ch = 0; ch < image.channels; ch++) {
                     const int index = ch * image.width * image.height;
@@ -191,7 +191,7 @@ void test_gpu(const Image &image, const int mask_width, vector<float> &gpu_times
                 cudaEventRecord(end);
                 cudaEventSynchronize(end);
                 cudaEventElapsedTime(&ms, start, end);
-                gpu_times[k - 3] = ms;
+                gpu_times[k - 2] = ms;
             } else {
                 for (int ch = 0; ch < image.channels; ch++) {
                     const int index = ch * image.width * image.height;
@@ -238,17 +238,21 @@ void test_wrapper(const Image &image, vector<float> &cpu_times, vector<float> &g
     cudaError_t err;
     string filename;
 
+    printf("Width: %d, Height: %d", image.width, image.height);
+
     auto* output_data_cpu = new uint8_t[image.size];
     auto* output_data_gpu = new uint8_t[image.size];
+    int mask_width;
+    bool result;
 
-    printf("CPU...\n");
+    /*printf("CPU...\n");
 
-    int mask_width = 3;
+    mask_width = 3;
     test_cpu(image, mask_width, kernel3x3, output_data_cpu, cpu_times);
     Image result3_image_cpu(image.width, image.height, image.channels, output_data_cpu);
     result3_image_cpu.data = toInterleaved(result3_image_cpu);
     filename = "result_gaussian_kernel_3X3_cpu_" + name + ".png";
-    bool result = result3_image_cpu.writeImage(filename.c_str());
+    result = result3_image_cpu.writeImage(filename.c_str());
 
 
     mask_width = 7;
@@ -263,7 +267,7 @@ void test_wrapper(const Image &image, vector<float> &cpu_times, vector<float> &g
     Image result11_image_cpu(image.width, image.height, image.channels, output_data_cpu);
     result11_image_cpu.data = toInterleaved(result11_image_cpu);
     filename = "result_gaussian_kernel_11X11_cpu_" + name + ".png";
-    result = result11_image_cpu.writeImage(filename.c_str());
+    result = result11_image_cpu.writeImage(filename.c_str());*/
 
 
     printf("\nGPU with tiling...\n");
@@ -302,7 +306,7 @@ void test_wrapper(const Image &image, vector<float> &cpu_times, vector<float> &g
     mask_width = 3;
     err = cudaMemcpyToSymbol(kernel, kernel3x3, mask_width * mask_width * sizeof(float));
     if (err != cudaSuccess) printf(cudaGetErrorString(err));
-    test_gpu(image, mask_width, gpu_times, true, output_data_gpu);
+    test_gpu(image, mask_width, gpu_times, false, output_data_gpu);
     Image result3_gpu_image(image.width, image.height, image.channels, output_data_gpu);
     result3_gpu_image.data = toInterleaved(result3_gpu_image);
     filename = "result_gaussian_kernel_3X3_gpu_" + name + ".png";

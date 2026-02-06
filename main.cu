@@ -16,12 +16,12 @@ int main() {
     float kernel11x11[121];
     generateGaussianKernel(11, 2, kernel11x11);
 
-    printf("Immagine 1K : \n");
+    printf("Immagine piccola : \n");
     Image image1K("dataset/pexels-snapwire-186566.jpg");
     image1K.data = toPlanar(image1K);
 
 
-    test_wrapper(image1K, cpu_times, gpu_times,  "1K", kernel3x3, kernel7x7, kernel11x11);
+    test_wrapper(image1K, cpu_times, gpu_times,  "small", kernel3x3, kernel7x7, kernel11x11);
 
     printf("\nImmagine 2K : \n");
     Image image2K("dataset/pexels-covandenham-1108753.jpg");

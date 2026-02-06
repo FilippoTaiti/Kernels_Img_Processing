@@ -33,8 +33,8 @@ void applyKernelPlanar(const Image &input_image, int mask_width, const float *ke
 }
 
 void test_cpu(const Image &input_image, const int mask_width, const float* kernel, uint8_t* output_data, vector<float>& cpu_times) {
-    for (int k = 0; k <= NUMBER_OF_ITERATIONS; k++) {
-        if (k > 2) {
+    for (int k = 0; k < NUMBER_OF_ITERATIONS; k++) {
+        if (k > 1) {
             clock_t start1 = clock();
             auto start = chrono::high_resolution_clock::now();
             applyKernelPlanar(input_image, mask_width, kernel, output_data);
@@ -43,13 +43,12 @@ void test_cpu(const Image &input_image, const int mask_width, const float* kerne
             auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
             double duration_cpu_time = ((double) (end1-start1)) / CLOCKS_PER_SEC;
 
-            cpu_times[k - 3] = duration.count();
+            cpu_times[k - 2] = duration.count();
 
         } else {
             applyKernelPlanar(input_image, mask_width, kernel, output_data);
         }
     }
-
 
     printf("Tempi di esecuzione CPU kernel %dx%d (ms):\n", mask_width, mask_width);
     printf("Min: %.4f\n", *min_element(cpu_times.begin(), cpu_times.end()));
