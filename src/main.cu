@@ -16,25 +16,44 @@ int main() {
     float kernel11x11[121];
     generateGaussianKernel(11, 2, kernel11x11);
 
+    printf("\nTest CUDA Stream - Tiling vs NoTiling : \n");
+
     printf("Immagine piccola : \n");
     Image image1K("dataset/pexels-snapwire-186566.jpg");
     image1K.data = toPlanar(image1K);
 
 
-    test_wrapper(image1K, cpu_times, gpu_times,  "small", kernel3x3, kernel7x7, kernel11x11);
+    testWrapperStreamTilingVSNoTiling(image1K, cpu_times, gpu_times,  "small", kernel3x3, kernel7x7, kernel11x11);
 
     printf("\nImmagine 2K : \n");
     Image image2K("dataset/pexels-covandenham-1108753.jpg");
     image2K.data = toPlanar(image2K);
 
-    test_wrapper(image2K, cpu_times, gpu_times, "2K", kernel3x3, kernel7x7, kernel11x11);
+    testWrapperStreamTilingVSNoTiling(image2K, cpu_times, gpu_times, "2K", kernel3x3, kernel7x7, kernel11x11);
 
 
     printf("\nImmagine 4K : \n");
     Image image4K("dataset/pexels-zelch-12498925.jpg");
     image4K.data = toPlanar(image4K);
 
-    test_wrapper(image4K, cpu_times, gpu_times, "4K", kernel3x3, kernel7x7, kernel11x11);
+    testWrapperStreamTilingVSNoTiling(image4K, cpu_times, gpu_times, "4K", kernel3x3, kernel7x7, kernel11x11);
+
+
+    image1K.data = toInterleaved(image1K);
+    image2K.data = toInterleaved(image2K);
+    image4K.data = toInterleaved(image4K);
+
+    printf("\nTest Interleaved vs Planar - Tiling VS No Tiling: \n");
+
+    printf("Immagine piccola : \n");
+    testWrapperInterleavedVSPlanar(image1K, cpu_times, gpu_times,  "small", kernel3x3, kernel7x7, kernel11x11);
+
+    printf("\nImmagine 2K : \n");
+    testWrapperInterleavedVSPlanar(image2K, cpu_times, gpu_times, "2K", kernel3x3, kernel7x7, kernel11x11);
+
+
+    printf("\nImmagine 4K : \n");
+    testWrapperInterleavedVSPlanar(image4K, cpu_times, gpu_times, "4K", kernel3x3, kernel7x7, kernel11x11);
 
     return 0;
 }
