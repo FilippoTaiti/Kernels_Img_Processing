@@ -10,11 +10,11 @@ int main() {
     vector<float> gpu_times((NUMBER_OF_ITERATIONS - 2), 0.0f);
 
     float kernel3x3[9];
-    generateGaussianKernel(3, 0.8, kernel3x3);
+    generateGaussianKernel(3, 3.2, kernel3x3);
     float kernel7x7[49];
-    generateGaussianKernel(7, 1.4, kernel7x7);
+    generateGaussianKernel(7, 5.6, kernel7x7);
     float kernel11x11[121];
-    generateGaussianKernel(11, 2, kernel11x11);
+    generateGaussianKernel(11, 8, kernel11x11);
 
     printf("\nTest CUDA Stream - Tiling vs NoTiling : \n");
 

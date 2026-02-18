@@ -442,7 +442,7 @@ void testGPUInterleavedVSPlanar(const Image &image, const int mask_width, vector
                     cudaEventRecord(end);
                     cudaEventSynchronize(end);
                     cudaEventElapsedTime(&ms, start, end);
-                    gpu_times[k - 2] = ms + time_ms;
+                    gpu_times[k - 2] = ms;
                 } else {
                     gpuKernelInterleavedTiling<<<dimGrid, dimBlock, total_bytes>>>(
                         device_input, image.width, image.height, mask_width, device_output);
@@ -460,7 +460,7 @@ void testGPUInterleavedVSPlanar(const Image &image, const int mask_width, vector
                     cudaEventRecord(end);
                     cudaEventSynchronize(end);
                     cudaEventElapsedTime(&ms, start, end);
-                    gpu_times[k - 2] = ms + time_ms;
+                    gpu_times[k - 2] = ms;
                 } else {
                     gpuKernelInterleaved<<<dimGrid, dimBlock>>>(device_input, image.width, image.height, image.channels,
                                                                 mask_width, device_output);
@@ -480,7 +480,7 @@ void testGPUInterleavedVSPlanar(const Image &image, const int mask_width, vector
                     cudaEventRecord(end);
                     cudaEventSynchronize(end);
                     cudaEventElapsedTime(&ms, start, end);
-                    gpu_times[k - 2] = ms + time_ms;
+                    gpu_times[k - 2] = ms;
                 } else {
                     gpuKernelPlanarTiling<<<dimGrid, dimBlock, total_bytes>>>(
                         device_input, image.width, image.height, mask_width, device_output);
@@ -499,7 +499,7 @@ void testGPUInterleavedVSPlanar(const Image &image, const int mask_width, vector
                     cudaEventRecord(end);
                     cudaEventSynchronize(end);
                     cudaEventElapsedTime(&ms, start, end);
-                    gpu_times[k - 2] = ms + time_ms;
+                    gpu_times[k - 2] = ms;
                 } else {
                     gpuKernelPlanar<<<dimGrid, dimBlock>>>(device_input, image.width, image.height, image.channels,
                                                            mask_width, device_output);
@@ -509,6 +509,24 @@ void testGPUInterleavedVSPlanar(const Image &image, const int mask_width, vector
         }
     }
 
+    float time_ms_final = 0.0f;
+    cudaEvent_t start2, end2;
+    cudaEventCreate(&start2);
+    cudaEventCreate(&end2);
+    cudaEventRecord(start2);
+    err = cudaMemcpy(output_data_gpu, device_output, image.size * sizeof(uint8_t), cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) printf("D2H: ", cudaGetErrorString(err));
+    cudaEventRecord(end2);
+    cudaEventSynchronize(end2);
+    cudaEventElapsedTime(&time_ms_final, start2, end2);
+    cudaEventDestroy(start2);
+    cudaEventDestroy(end2);
+
+    for (int i = 0; i < NUMBER_OF_ITERATIONS-2; i++) {
+        float tot = time_ms + time_ms_final;
+        gpu_times[i] += tot;
+    }
+
 
     printf("Tempo di esecuzione GPU kernel %dx%d (ms): \n", mask_width, mask_width);
     printf("Min: %.4f\n", *min_element(gpu_times.begin(), gpu_times.end()));
@@ -516,10 +534,6 @@ void testGPUInterleavedVSPlanar(const Image &image, const int mask_width, vector
     const float avg = mean(gpu_times);
     printf("Avg: %.4f\n", avg);
     printf("Std: %.4f\n", standard_dev(gpu_times, avg));
-
-
-    err = cudaMemcpy(output_data_gpu, device_output, image.size * sizeof(uint8_t), cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess) printf("D2H: ", cudaGetErrorString(err));
 
 
     err = cudaFree(device_input);
